@@ -1,0 +1,307 @@
+{
+  "id": "whatsapp-agent-platform",
+  "name": "WhatsApp Agent Platform",
+  "version": "0.1.0",
+  "description": "Connect OpenClaw to a WhatsApp third-party agent through WhatsApp's official Agent Platform API (long-poll ingress, no webhooks, no unofficial libraries).",
+  "categories": [
+    "channels"
+  ],
+  "configSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "apiKey": {
+        "type": "string",
+        "minLength": 1
+      },
+      "enabled": {
+        "default": true,
+        "type": "boolean"
+      },
+      "pollTimeout": {
+        "default": 15,
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 25
+      },
+      "pollLimit": {
+        "default": 50,
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "sessionKeyPrefix": {
+        "default": "whatsapp-agent",
+        "type": "string",
+        "minLength": 1
+      },
+      "sendReadReceipts": {
+        "default": true,
+        "type": "boolean"
+      },
+      "mediaDir": {
+        "type": "string"
+      },
+      "chunkLimit": {
+        "default": 4000,
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4096
+      },
+      "previewUrl": {
+        "default": false,
+        "type": "boolean"
+      },
+      "creatorId": {
+        "type": "string"
+      },
+      "baseUrl": {
+        "default": "https://api.whatsapp.com/agent/v1",
+        "type": "string",
+        "format": "uri"
+      },
+      "accounts": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "apiKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "enabled": {
+              "default": true,
+              "type": "boolean"
+            },
+            "pollTimeout": {
+              "default": 15,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 25
+            },
+            "pollLimit": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "sessionKeyPrefix": {
+              "default": "whatsapp-agent",
+              "type": "string",
+              "minLength": 1
+            },
+            "sendReadReceipts": {
+              "default": true,
+              "type": "boolean"
+            },
+            "mediaDir": {
+              "type": "string"
+            },
+            "chunkLimit": {
+              "default": 4000,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4096
+            },
+            "previewUrl": {
+              "default": false,
+              "type": "boolean"
+            },
+            "creatorId": {
+              "type": "string"
+            },
+            "baseUrl": {
+              "default": "https://api.whatsapp.com/agent/v1",
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "additionalProperties": false
+  },
+  "channels": [
+    "whatsapp-agent-platform"
+  ],
+  "channelConfigs": {
+    "whatsapp-agent-platform": {
+      "label": "WhatsApp Agent Platform",
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "pollTimeout": {
+            "default": 15,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 25
+          },
+          "pollLimit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "sessionKeyPrefix": {
+            "default": "whatsapp-agent",
+            "type": "string",
+            "minLength": 1
+          },
+          "sendReadReceipts": {
+            "default": true,
+            "type": "boolean"
+          },
+          "mediaDir": {
+            "type": "string"
+          },
+          "chunkLimit": {
+            "default": 4000,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
+          },
+          "previewUrl": {
+            "default": false,
+            "type": "boolean"
+          },
+          "creatorId": {
+            "type": "string"
+          },
+          "baseUrl": {
+            "default": "https://api.whatsapp.com/agent/v1",
+            "type": "string",
+            "format": "uri"
+          },
+          "accounts": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "apiKey": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "pollTimeout": {
+                  "default": 15,
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 25
+                },
+                "pollLimit": {
+                  "default": 50,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "sessionKeyPrefix": {
+                  "default": "whatsapp-agent",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sendReadReceipts": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "mediaDir": {
+                  "type": "string"
+                },
+                "chunkLimit": {
+                  "default": 4000,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4096
+                },
+                "previewUrl": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "creatorId": {
+                  "type": "string"
+                },
+                "baseUrl": {
+                  "default": "https://api.whatsapp.com/agent/v1",
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "uiHints": {
+        "apiKey": {
+          "label": "API key",
+          "help": "From the WhatsApp agent chat: Chat info > API key. Stored as a secret and never logged.",
+          "sensitive": true,
+          "placeholder": "paste the agent API key"
+        },
+        "enabled": {
+          "label": "Enabled"
+        },
+        "pollTimeout": {
+          "label": "Poll timeout (s)",
+          "help": "Long-poll wait, 0–25 seconds.",
+          "advanced": true
+        },
+        "pollLimit": {
+          "label": "Updates per poll",
+          "help": "1–100.",
+          "advanced": true
+        },
+        "sessionKeyPrefix": {
+          "label": "Session key prefix",
+          "advanced": true
+        },
+        "sendReadReceipts": {
+          "label": "Send read receipts & typing"
+        },
+        "mediaDir": {
+          "label": "Media directory",
+          "help": "Where inbound attachments and offset state are stored. Defaults to the OS temp dir.",
+          "advanced": true
+        },
+        "chunkLimit": {
+          "label": "Text chunk limit",
+          "help": "Soft limit for outbound text; the hard cap is 4096.",
+          "advanced": true
+        },
+        "previewUrl": {
+          "label": "Enable link previews",
+          "advanced": true
+        },
+        "creatorId": {
+          "label": "Creator id",
+          "help": "Optional user:<id> of the agent creator; inbound from anyone else is ignored.",
+          "advanced": true
+        },
+        "baseUrl": {
+          "label": "API base URL",
+          "help": "Advanced: override the Agent Platform base URL.",
+          "advanced": true
+        }
+      }
+    }
+  }
+}
