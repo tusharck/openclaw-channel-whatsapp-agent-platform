@@ -8,7 +8,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { resolveAccountConfig, whatsappChannelConfigSchema } from "./config.js";
+import {
+  patchAccountConfigBlock,
+  readAccountConfigBlock,
+  resolveAccountConfig,
+  resolveAccountFromCfg,
+  whatsappChannelConfigSchema,
+} from "./config.js";
 import { chunkText, DEFAULT_CHUNK_LIMIT, WHATSAPP_TEXT_HARD_LIMIT } from "./whatsapp/chunk.js";
 import { buildMediaMessage, buildReactionMessage, buildTextMessage, normalizeRecipient } from "./whatsapp/payloads.js";
 import { classifyError, describeError, errorFromResponse, WhatsAppErrorCode } from "./whatsapp/errors.js";
@@ -161,6 +167,74 @@ describe("error-code mapping", () => {
   it("treats 500 as indeterminate (unknown outcome)", () => {
     const err = errorFromResponse(500, { error: { code: 2 } });
     expect(err.indeterminate).toBe(true);
+  });
+});
+
+describe("setup-wizard config persistence", () => {
+  // These are the helpers the declarative setup wizard writes the API key
+  // through (defineTokenCredential -> patchAccount).
+  const cfgWith = (channelBlock: unknown): Parameters<typeof readAccountConfigBlock>[0] =>
+    ({ channels: { "whatsapp-agent-platform": channelBlock } }) as never;
+
+  it("reads the default account from the top-level channel block", () => {
+    const cfg = cfgWith({ apiKey: "k1", pollTimeout: 20 });
+    expect(readAccountConfigBlock(cfg, "default")).toEqual({ apiKey: "k1", pollTimeout: 20 });
+  });
+
+  it("reads a named account from accounts.<name>", () => {
+    const cfg = cfgWith({ apiKey: "base", accounts: { work: { apiKey: "w" } } });
+    expect(readAccountConfigBlock(cfg, "work")).toEqual({ apiKey: "w" });
+  });
+
+  it("returns an empty block for a missing channel or account", () => {
+    expect(readAccountConfigBlock({} as never, "default")).toEqual({});
+    expect(readAccountConfigBlock(cfgWith({ apiKey: "k" }), "nope")).toEqual({});
+  });
+
+  it("writes the default account key without disturbing siblings", () => {
+    const cfg = { channels: { other: { x: 1 }, "whatsapp-agent-platform": { pollTimeout: 20 } } } as never;
+    const next = patchAccountConfigBlock(cfg, "default", { apiKey: "secret" });
+    const channels = (next as unknown as { channels: Record<string, Record<string, unknown>> }).channels;
+    expect(channels["whatsapp-agent-platform"]).toEqual({ pollTimeout: 20, apiKey: "secret" });
+    expect(channels.other).toEqual({ x: 1 });
+  });
+
+  it("writes a named account under accounts.<name>", () => {
+    const next = patchAccountConfigBlock(cfgWith({ apiKey: "base" }), "work", { apiKey: "w" });
+    const block = (next as unknown as { channels: Record<string, Record<string, unknown>> }).channels[
+      "whatsapp-agent-platform"
+    ];
+    expect(block.apiKey).toBe("base"); // default untouched
+    expect(block.accounts).toEqual({ work: { apiKey: "w" } });
+  });
+
+  it("honours clearFields (used when switching to an env-var credential)", () => {
+    const cfg = cfgWith({ apiKey: "old", keep: true });
+    const next = patchAccountConfigBlock(cfg, "default", {}, ["apiKey"]);
+    const block = (next as unknown as { channels: Record<string, Record<string, unknown>> }).channels[
+      "whatsapp-agent-platform"
+    ];
+    expect(block).toEqual({ keep: true });
+  });
+
+  it("does not mutate the input config", () => {
+    const cfg = cfgWith({ pollTimeout: 20 });
+    const snapshot = JSON.stringify(cfg);
+    patchAccountConfigBlock(cfg, "default", { apiKey: "x" });
+    expect(JSON.stringify(cfg)).toBe(snapshot);
+  });
+
+  it("creates the channel block when config is empty", () => {
+    const next = patchAccountConfigBlock({} as never, "default", { apiKey: "fresh" });
+    const channels = (next as unknown as { channels: Record<string, Record<string, unknown>> }).channels;
+    expect(channels["whatsapp-agent-platform"]).toEqual({ apiKey: "fresh" });
+  });
+
+  it("resolveAccountFromCfg reports configured only once a key is written", () => {
+    expect(resolveAccountFromCfg({} as never).configured).toBe(false);
+    const next = patchAccountConfigBlock({} as never, "default", { apiKey: "k" });
+    expect(resolveAccountFromCfg(next).configured).toBe(true);
+    expect(resolveAccountFromCfg(next).apiKey).toBe("k");
   });
 });
 

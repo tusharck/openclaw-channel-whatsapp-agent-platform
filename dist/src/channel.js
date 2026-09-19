@@ -11,7 +11,8 @@
  * OpenClaw plugin SDK (v2026.9.x).
  */
 import { createChannelPluginBase, createChatChannelPlugin, } from "openclaw/plugin-sdk/channel-core";
-import { CHANNEL_ID, CHANNEL_LABEL, DOCS_PATH, buildConfigSchema, resolveAccountConfig, } from "./config-schema.js";
+import { CHANNEL_ID, CHANNEL_LABEL, DOCS_PATH, buildConfigSchema, readChannelConfigBlock, resolveAccountFromCfg, } from "./config-schema.js";
+import { whatsappAgentPlatformSetupWizard } from "./setup-wizard.js";
 import { WhatsAppAgentClient } from "./whatsapp/client.js";
 import { redactSecret } from "./whatsapp/redact.js";
 import { normalizeRecipient } from "./whatsapp/payloads.js";
@@ -27,11 +28,10 @@ function accountKey(accountId) {
 }
 /** Read this channel's config block from the opaque OpenClawConfig. */
 function readChannelBlock(cfg) {
-    const channels = cfg.channels;
-    return channels?.[CHANNEL_ID];
+    return readChannelConfigBlock(cfg);
 }
 function resolve(cfg, accountId) {
-    return resolveAccountConfig(readChannelBlock(cfg), accountId ?? null);
+    return resolveAccountFromCfg(cfg, accountId);
 }
 /** Build a per-turn client + a logger that redacts the API key from all output. */
 function makeClient(account, log) {
@@ -339,6 +339,9 @@ const base = createChannelPluginBase({
     capabilities,
     config,
     configSchema: buildConfigSchema(),
+    // Drives the dashboard / onboarding "interactive setup screen". Without this
+    // the host reports `noInteractiveSetup` and falls back to the CLI.
+    setupWizard: whatsappAgentPlatformSetupWizard,
 });
 export const whatsappAgentPlatformChannel = createChatChannelPlugin({
     base: {

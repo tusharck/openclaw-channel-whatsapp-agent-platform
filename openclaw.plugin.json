@@ -1,7 +1,7 @@
 {
   "id": "whatsapp-agent-platform",
   "name": "WhatsApp Agent Platform",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Connect OpenClaw to a WhatsApp third-party agent through WhatsApp's official Agent Platform API (long-poll ingress, no webhooks, no unofficial libraries).",
   "categories": [
     "channels"

@@ -12,6 +12,8 @@ export const CHANNEL_ID = "whatsapp-agent-platform";
 export const CHANNEL_LABEL = "WhatsApp Agent Platform";
 export const DOCS_PATH = "/plugins/whatsapp-agent-platform";
 export const NPM_SPEC = "whatsapp-agent-platform";
+/** Account id used when config lives directly under `channels.<id>`. */
+export const DEFAULT_ACCOUNT_ID = "default";
 /** One account = one WhatsApp third-party agent (identified by its API key). */
 export const accountSchema = z.object({
     apiKey: z.string().min(1, "API key is required"),
@@ -66,6 +68,61 @@ export function resolveAccountConfig(raw, accountId) {
         creatorId: merged.creatorId,
         baseUrl: merged.baseUrl ?? FIELD_DEFAULTS.baseUrl,
     };
+}
+/** ---- raw config-tree access (used by the adapters and the setup wizard) ---- */
+function isRecord(value) {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+/** This channel's raw config block: `channels.<CHANNEL_ID>`. */
+export function readChannelConfigBlock(cfg) {
+    const channels = cfg.channels;
+    return channels?.[CHANNEL_ID];
+}
+/** Resolve an account straight from the host config. */
+export function resolveAccountFromCfg(cfg, accountId) {
+    return resolveAccountConfig(readChannelConfigBlock(cfg), accountId ?? null);
+}
+/**
+ * The raw (unmerged) config object for one account. The default account lives
+ * at `channels.<id>`; named accounts live at `channels.<id>.accounts.<name>`.
+ */
+export function readAccountConfigBlock(cfg, accountId) {
+    const block = readChannelConfigBlock(cfg);
+    if (!isRecord(block))
+        return {};
+    if (accountId === DEFAULT_ACCOUNT_ID)
+        return block;
+    const accounts = block.accounts;
+    const named = isRecord(accounts) ? accounts[accountId] : undefined;
+    return isRecord(named) ? named : {};
+}
+/**
+ * Immutably apply `patch` to one account's config block, deleting `clearFields`.
+ * This is how the setup wizard persists the API key.
+ */
+export function patchAccountConfigBlock(cfg, accountId, patch, clearFields = []) {
+    const root = cfg;
+    const channels = isRecord(root.channels) ? { ...root.channels } : {};
+    const existing = channels[CHANNEL_ID];
+    const block = isRecord(existing) ? { ...existing } : {};
+    const applyTo = (target) => {
+        const next = { ...target, ...patch };
+        for (const field of clearFields)
+            delete next[field];
+        return next;
+    };
+    if (accountId === DEFAULT_ACCOUNT_ID) {
+        channels[CHANNEL_ID] = applyTo(block);
+    }
+    else {
+        const rawAccounts = block.accounts;
+        const accounts = isRecord(rawAccounts) ? { ...rawAccounts } : {};
+        const named = accounts[accountId];
+        accounts[accountId] = applyTo(isRecord(named) ? named : {});
+        block.accounts = accounts;
+        channels[CHANNEL_ID] = block;
+    }
+    return { ...root, channels };
 }
 /** UI hints shown in the dashboard for each field. */
 export const uiHints = {

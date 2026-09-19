@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import type { ChannelConfigUiHint } from "openclaw/plugin-sdk/channel-core";
+import type { ChannelConfigUiHint, OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
 import { DEFAULT_BASE_URL } from "./whatsapp/client.js";
 import { DEFAULT_CHUNK_LIMIT } from "./whatsapp/chunk.js";
 
@@ -15,6 +15,8 @@ export const CHANNEL_ID = "whatsapp-agent-platform";
 export const CHANNEL_LABEL = "WhatsApp Agent Platform";
 export const DOCS_PATH = "/plugins/whatsapp-agent-platform";
 export const NPM_SPEC = "whatsapp-agent-platform";
+/** Account id used when config lives directly under `channels.<id>`. */
+export const DEFAULT_ACCOUNT_ID = "default";
 
 /** One account = one WhatsApp third-party agent (identified by its API key). */
 export const accountSchema = z.object({
@@ -95,6 +97,71 @@ export function resolveAccountConfig(raw: unknown, accountId?: string | null): R
     creatorId: merged.creatorId,
     baseUrl: merged.baseUrl ?? FIELD_DEFAULTS.baseUrl,
   };
+}
+
+/** ---- raw config-tree access (used by the adapters and the setup wizard) ---- */
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** This channel's raw config block: `channels.<CHANNEL_ID>`. */
+export function readChannelConfigBlock(cfg: OpenClawConfig): unknown {
+  const channels = (cfg as { channels?: Record<string, unknown> }).channels;
+  return channels?.[CHANNEL_ID];
+}
+
+/** Resolve an account straight from the host config. */
+export function resolveAccountFromCfg(cfg: OpenClawConfig, accountId?: string | null): ResolvedWhatsAppAccount {
+  return resolveAccountConfig(readChannelConfigBlock(cfg), accountId ?? null);
+}
+
+/**
+ * The raw (unmerged) config object for one account. The default account lives
+ * at `channels.<id>`; named accounts live at `channels.<id>.accounts.<name>`.
+ */
+export function readAccountConfigBlock(cfg: OpenClawConfig, accountId: string): Record<string, unknown> {
+  const block = readChannelConfigBlock(cfg);
+  if (!isRecord(block)) return {};
+  if (accountId === DEFAULT_ACCOUNT_ID) return block;
+  const accounts = block.accounts;
+  const named = isRecord(accounts) ? accounts[accountId] : undefined;
+  return isRecord(named) ? named : {};
+}
+
+/**
+ * Immutably apply `patch` to one account's config block, deleting `clearFields`.
+ * This is how the setup wizard persists the API key.
+ */
+export function patchAccountConfigBlock(
+  cfg: OpenClawConfig,
+  accountId: string,
+  patch: Record<string, unknown>,
+  clearFields: readonly string[] = [],
+): OpenClawConfig {
+  const root = cfg as unknown as Record<string, unknown>;
+  const channels = isRecord(root.channels) ? { ...root.channels } : {};
+  const existing = channels[CHANNEL_ID];
+  const block: Record<string, unknown> = isRecord(existing) ? { ...existing } : {};
+
+  const applyTo = (target: Record<string, unknown>): Record<string, unknown> => {
+    const next = { ...target, ...patch };
+    for (const field of clearFields) delete next[field];
+    return next;
+  };
+
+  if (accountId === DEFAULT_ACCOUNT_ID) {
+    channels[CHANNEL_ID] = applyTo(block);
+  } else {
+    const rawAccounts = block.accounts;
+    const accounts: Record<string, unknown> = isRecord(rawAccounts) ? { ...rawAccounts } : {};
+    const named = accounts[accountId];
+    accounts[accountId] = applyTo(isRecord(named) ? named : {});
+    block.accounts = accounts;
+    channels[CHANNEL_ID] = block;
+  }
+
+  return { ...root, channels } as unknown as OpenClawConfig;
 }
 
 /** UI hints shown in the dashboard for each field. */
