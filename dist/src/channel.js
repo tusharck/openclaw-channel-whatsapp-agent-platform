@@ -10,17 +10,19 @@
  * documented in the README and PR notes; this file targets the installed
  * OpenClaw plugin SDK (v2026.9.x).
  */
+import { fileURLToPath } from "node:url";
 import { createChannelPluginBase, createChatChannelPlugin, } from "openclaw/plugin-sdk/channel-core";
 import { CHANNEL_ID, CHANNEL_LABEL, DOCS_PATH, buildConfigSchema, readChannelConfigBlock, resolveAccountFromCfg, } from "./config-schema.js";
 import { whatsappAgentPlatformSetupWizard } from "./setup-wizard.js";
 import { WhatsAppAgentClient } from "./whatsapp/client.js";
+import { describeStatusErrors } from "./whatsapp/errors.js";
 import { redactSecret } from "./whatsapp/redact.js";
 import { normalizeRecipient } from "./whatsapp/payloads.js";
 import { DEFAULT_CHUNK_LIMIT } from "./whatsapp/chunk.js";
 import { FileOffsetStore, deleteLocalFile, gcMediaDir, resolveStateRoot, saveInboundMedia } from "./plugin-state.js";
 import { Poller } from "./poller.js";
 import { dispatchDirectMessage } from "./inbound-dispatch.js";
-import { sendChunkedText, sendLocalMedia } from "./outbound.js";
+import { releaseMediaForStatus, sendChunkedText, sendLocalMedia } from "./outbound.js";
 const pollerHealth = new Map();
 const activeRuns = new Map();
 function accountKey(accountId) {
@@ -136,6 +138,13 @@ const gateway = {
             onMessage: async (message) => {
                 await handleInbound({ ctx, client, account, stateRoot, creator, logger, message });
             },
+            onStatus: async (status) => {
+                // Media failures such as 131053 arrive here, after the send was accepted.
+                if (status.status === "failed") {
+                    logger.warn?.(`WhatsApp message ${status.id} failed: ${describeStatusErrors(status)}`);
+                }
+                await releaseMediaForStatus(status.id, status.status);
+            },
             onFatal: (err) => {
                 ctx.log?.error?.(err.message);
                 const health = pollerHealth.get(key);
@@ -223,7 +232,7 @@ async function handleInbound(p) {
     logger.info?.(`Inbound ${message.attachment ? message.attachment.mediaType : "text"} from ${message.from}; dispatching to agent.`);
     const deliver = async (reply) => {
         if (reply.mediaUrl) {
-            const filePath = reply.mediaUrl.startsWith("file://") ? new URL(reply.mediaUrl).pathname : reply.mediaUrl;
+            const filePath = reply.mediaUrl.startsWith("file://") ? fileURLToPath(reply.mediaUrl) : reply.mediaUrl;
             const res = await sendLocalMedia(client, to, filePath, { caption: reply.text, signal: ctx.abortSignal });
             logger.info?.(`Sent media reply (${res.messageIds.length} msg) to ${message.from}.`);
             return;
@@ -320,7 +329,7 @@ const outbound = {
             throw new Error("sendMedia called without mediaUrl.");
         }
         // ctx.mediaUrl is a local path or file:// URL produced by the agent runtime.
-        const filePath = ctx.mediaUrl.startsWith("file://") ? new URL(ctx.mediaUrl).pathname : ctx.mediaUrl;
+        const filePath = ctx.mediaUrl.startsWith("file://") ? fileURLToPath(ctx.mediaUrl) : ctx.mediaUrl;
         const result = await sendLocalMedia(client, ctx.to, filePath, {
             caption: ctx.text || undefined,
             signal: ctx.signal,

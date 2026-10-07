@@ -11,7 +11,7 @@
  */
 
 import { redactSecret } from "./redact.js";
-import type { WhatsAppErrorEnvelope } from "./types.js";
+import type { WhatsAppErrorEnvelope, WhatsAppInboundStatus } from "./types.js";
 
 /** How the caller should react to a failure. */
 export type WhatsAppErrorKind =
@@ -141,8 +141,13 @@ export function errorFromResponse(status: number, body: unknown, secret?: string
   const envelope = (body ?? {}) as WhatsAppErrorEnvelope;
   const code = envelope.error?.code;
   const kind = classifyError(status, code);
-  const detail = envelope.error?.error_data?.details ?? envelope.error?.message;
-  const message = redactSecret(`${describeError(kind, detail)} (HTTP ${status}${code ? `, code ${code}` : ""})`, secret);
+  const details = envelope.error?.error_data?.details;
+  const detail = details ?? envelope.error?.message;
+  // Kinds with a canned description would otherwise drop the platform's own
+  // reason; `error_data.details` is what tells e.g. a 131053 apart.
+  let text = describeError(kind, detail);
+  if (details && !text.includes(details)) text += ` Details: ${details}`;
+  const message = redactSecret(`${text} (HTTP ${status}${code ? `, code ${code}` : ""})`, secret);
   return new WhatsAppApiError({
     kind,
     status,
@@ -163,4 +168,18 @@ export function networkError(cause: unknown, secret?: string): WhatsAppApiError 
     retryable: true,
     indeterminate: true,
   });
+}
+
+/** Summarize a `failed` status's errors, including `error_data.details`. */
+export function describeStatusErrors(status: WhatsAppInboundStatus): string {
+  // Statuses come straight off the wire; tolerate a malformed `errors` field.
+  const errors = Array.isArray(status.errors) ? status.errors.filter((e) => e && typeof e === "object") : [];
+  if (errors.length === 0) return "no error detail provided";
+  return errors
+    .map((e) => {
+      const head = [e.code !== undefined ? `code ${e.code}` : undefined, e.title ?? e.message].filter(Boolean).join(" ");
+      const details = e.error_data?.details;
+      return details ? `${head} — ${details}` : head || "unknown error";
+    })
+    .join("; ");
 }

@@ -183,11 +183,15 @@ export class WhatsAppAgentClient {
         indeterminate: false,
       });
     }
+    // The upload's `type` field is the file's MIME type (e.g. "application/pdf"),
+    // NOT the message category ("document") — that only appears on the send.
+    // A category here makes the platform reject the media with 131053.
+    const mimeType = params.mimeType.toLowerCase();
     const form = new FormData();
     form.append("messaging_product", "whatsapp");
-    form.append("type", params.type);
-    const blob = new Blob([toArrayBuffer(params.data)], { type: params.mimeType });
-    form.append("file", blob, params.filename ?? `upload.${extForMime(params.mimeType)}`);
+    form.append("type", mimeType);
+    const blob = new Blob([toArrayBuffer(params.data)], { type: mimeType });
+    form.append("file", blob, params.filename ?? `upload.${extForMime(mimeType)}`);
 
     const res = await this.request({
       method: "POST",

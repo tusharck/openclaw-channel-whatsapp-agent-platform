@@ -21,7 +21,11 @@ export const MEDIA_CONSTRAINTS: Record<WhatsAppMediaType, MediaConstraint> = {
   },
   video: { maxBytes: 16 * MB, mimeTypes: ["video/mp4", "video/3gpp"] },
   document: {
-    maxBytes: 100 * MB,
+    // 16 MiB, not the Cloud API's 100 MB. Source: the hermes-whatsapp-agent-platform
+    // client family, built against the same v1 Agent Platform manual, documents
+    // the Agent Platform document limit as 16 MiB. The official manual wasn't
+    // available to verify this; revisit if it turns out to allow more.
+    maxBytes: 16 * MB,
     mimeTypes: [
       "text/plain",
       "application/pdf",

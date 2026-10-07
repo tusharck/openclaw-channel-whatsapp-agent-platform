@@ -79,10 +79,9 @@ export async function sendLocalMedia(
     { id: mediaId, caption: opts.caption, filename: mediaType === "document" ? filename : undefined },
     opts.signal,
   );
-  // The uploaded object is referenced by the delivered message; releasing it
-  // keeps the agent's media store from growing without bound. Best-effort.
-  await releaseUploadedMedia(client, mediaId, opts.logger);
-  return { messageIds: res.messages.map((m) => m.id) };
+  const messageIds = res.messages.map((m) => m.id);
+  deferRelease(client, mediaId, messageIds, opts.logger);
+  return { messageIds };
 }
 
 /** Send already-in-memory bytes as media (upload then send). */
@@ -101,11 +100,51 @@ export async function sendBytesMedia(
     { id: mediaId, caption: opts.caption, filename: mediaType === "document" ? opts.filename : undefined },
     opts.signal,
   );
-  await releaseUploadedMedia(client, mediaId, opts.logger);
-  return { messageIds: res.messages.map((m) => m.id) };
+  const messageIds = res.messages.map((m) => m.id);
+  deferRelease(client, mediaId, messageIds, opts.logger);
+  return { messageIds };
 }
 
-/** Delete an uploaded media object after it has been sent. Never throws. */
+/**
+ * Uploaded media awaiting its message's delivery status, keyed by message id.
+ * A 2xx from `POST /messages` only means "accepted": the platform processes the
+ * referenced media afterwards, so deleting it right away races that work and
+ * the message fails with 131053. Release once the message reaches a terminal
+ * status instead. Bounded; anything evicted or never acknowledged is left to
+ * the platform's own 30-day media expiry.
+ */
+const pendingReleases = new Map<string, () => Promise<void>>();
+const MAX_PENDING_RELEASES = 500;
+const TERMINAL_STATUSES = new Set(["delivered", "read", "failed"]);
+
+function deferRelease(
+  client: WhatsAppAgentClient,
+  mediaId: string,
+  messageIds: string[],
+  logger?: RedactingLogger,
+): void {
+  const messageId = messageIds[messageIds.length - 1];
+  if (messageId === undefined) return; // nothing references it; let it expire
+  pendingReleases.set(messageId, () => releaseUploadedMedia(client, mediaId, logger));
+  if (pendingReleases.size > MAX_PENDING_RELEASES) {
+    const oldest = pendingReleases.keys().next().value;
+    if (oldest !== undefined) pendingReleases.delete(oldest);
+  }
+}
+
+/**
+ * Release the media uploaded for `messageId` once its status is terminal.
+ * Wired to the poller's status updates. Never throws.
+ */
+export async function releaseMediaForStatus(messageId: string, status: string): Promise<void> {
+  if (!TERMINAL_STATUSES.has(status)) return;
+  const release = pendingReleases.get(messageId);
+  if (!release) return;
+  pendingReleases.delete(messageId);
+  await release();
+}
+
+/** Delete an uploaded media object once its message is settled. Never throws. */
 async function releaseUploadedMedia(
   client: WhatsAppAgentClient,
   mediaId: string,

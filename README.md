@@ -122,7 +122,10 @@ turn needs them:
 - a GC pass runs when the channel starts, removing anything older than **24h**
   and then trimming oldest-first until the directory is under **256MB**;
 - media uploaded for an outbound send is deleted from WhatsApp's media store
-  once the message referencing it has been sent.
+  once the message referencing it reaches a terminal status (`delivered`,
+  `read` or `failed`) — not when the send is merely accepted, which would race
+  the platform's own processing and fail the message with `131053`. Uploads
+  that never get a status expire on WhatsApp's side after 30 days.
 
 `mediaDir` defaults to a directory under the OS temp dir; point it somewhere
 durable if you want attachments to outlive a reboot.

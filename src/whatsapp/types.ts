@@ -114,11 +114,21 @@ export interface WhatsAppInboundMessage {
   context?: { id?: string; from?: string };
 }
 
+/** One entry of a failed status's `errors` array. */
+export interface WhatsAppStatusError {
+  code?: number;
+  title?: string;
+  message?: string;
+  error_data?: { details?: string };
+}
+
 export interface WhatsAppInboundStatus {
   id: string;
   status: "sent" | "delivered" | "read" | "failed" | string;
   timestamp?: string;
   recipient_id?: string;
+  /** Present on `failed` statuses; `error_data.details` carries the real reason. */
+  errors?: WhatsAppStatusError[];
 }
 
 export interface WhatsAppInboundContact {
