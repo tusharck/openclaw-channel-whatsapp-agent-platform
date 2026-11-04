@@ -38,6 +38,9 @@ const manifest = {
   // this is the channel's own config object.
   configSchema: schema,
   channels: [id],
+  // Must match dist/doctor-contract-api.js. An empty list tells the host this
+  // plugin is stateless across versions, so pending upgrades can complete.
+  doctorContract: { stateMigrations: [] },
   channelConfigs: {
     [id]: {
       label: entry.name ?? id,

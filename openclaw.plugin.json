@@ -128,6 +128,9 @@
   "channels": [
     "whatsapp-agent-platform"
   ],
+  "doctorContract": {
+    "stateMigrations": []
+  },
   "channelConfigs": {
     "whatsapp-agent-platform": {
       "label": "WhatsApp Agent Platform",

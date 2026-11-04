@@ -22,6 +22,7 @@
     "plugin:validate": "openclaw plugins validate"
   },
   "dependencies": {
+    "@imagemagick/magick-wasm": "0.0.45",
     "zod": "4.4.3"
   },
   "peerDependencies": {

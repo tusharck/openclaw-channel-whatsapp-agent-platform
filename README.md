@@ -97,7 +97,17 @@ with optional named accounts under `accounts.<name>`.
   **in order** (never concurrently to the same recipient); `sendMedia` uploads
   the file first, then sends it by media id. Failures map to clear errors: 401 →
   "API key invalid, regenerate it"; 403/`131005` → "recipient is not the agent's
-  creator"; 429 → backoff and retry.
+  creator"; 429 → backoff and retry. Every platform error carries its
+  `error_data.details` and `fbtrace_id` in the message the agent sees.
+- **Outbound attachments** — checked locally before any upload, with the MIME
+  type taken from the file extension (explicit map; never
+  `application/octet-stream`), per the manual's accepted media types:
+  - images: JPEG/PNG, ≤5MB. WebP, GIF, BMP, TIFF, AVIF and HEIC/HEIF are
+    converted to PNG (JPEG if the PNG would exceed 5MB) via ImageMagick WASM;
+  - documents: PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, TXT, ≤16MB;
+  - audio (AAC, M4A, MP3, AMR, OGG, OPUS) and video (MP4, 3GP), ≤16MB;
+  - anything else (ZIP, archives, executables, …) fails fast with
+    "Unsupported attachment type" and is never uploaded.
 - **Presence** — with `sendReadReceipts` on, the plugin sends a read receipt on
   inbound (best effort; never fails the turn). The API has no typing indicator.
 - **Readiness** — the heartbeat reports the account's own poll-loop liveness and

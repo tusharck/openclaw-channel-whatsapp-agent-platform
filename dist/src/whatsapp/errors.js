@@ -31,6 +31,10 @@ export class WhatsAppApiError extends Error {
     retryable;
     /** True when the outcome of the request is unknown (may or may not have applied). */
     indeterminate;
+    /** The platform's `error.error_data.details` — names the exact cause (e.g. which MIME type was refused). */
+    details;
+    /** The platform's `error.fbtrace_id`, for support requests. */
+    fbtraceId;
     constructor(params) {
         super(params.message);
         this.name = "WhatsAppApiError";
@@ -39,6 +43,8 @@ export class WhatsAppApiError extends Error {
         this.code = params.code;
         this.retryable = params.retryable;
         this.indeterminate = params.indeterminate;
+        this.details = params.details;
+        this.fbtraceId = params.fbtraceId;
     }
 }
 /** Map an HTTP status + optional API error code to a kind. */
@@ -116,17 +122,22 @@ export function isIndeterminate(kind) {
  * to scrub it from any echoed error text; it is never stored on the error.
  */
 export function errorFromResponse(status, body, secret) {
-    const envelope = (body ?? {});
-    const code = envelope.error?.code;
+    const envelope = (body && typeof body === "object" ? body : {});
+    const code = typeof envelope.error?.code === "number" ? envelope.error.code : undefined;
     const kind = classifyError(status, code);
-    const details = envelope.error?.error_data?.details;
-    const detail = details ?? envelope.error?.message;
-    // Kinds with a canned description would otherwise drop the platform's own
-    // reason; `error_data.details` is what tells e.g. a 131053 apart.
-    let text = describeError(kind, detail);
+    const rawDetails = envelope.error?.error_data?.details;
+    const details = typeof rawDetails === "string" && rawDetails.trim() ? rawDetails.trim() : undefined;
+    const fbtraceId = typeof envelope.error?.fbtrace_id === "string" ? envelope.error.fbtrace_id : undefined;
+    // `error_data.details` is what names the exact cause (e.g. "document is not a
+    // supported media type" on a 131053), so it is always surfaced — never
+    // swallowed behind a canned description or the generic `error.message`.
+    let text = describeError(kind, envelope.error?.message);
     if (details && !text.includes(details))
-        text += ` Details: ${details}`;
-    const message = redactSecret(`${text} (HTTP ${status}${code ? `, code ${code}` : ""})`, secret);
+        text += `${/[.!?]$/.test(text) ? "" : "."} Details: ${details}`;
+    const meta = [`HTTP ${status}`, code !== undefined ? `code ${code}` : undefined, fbtraceId ? `fbtrace_id ${fbtraceId}` : undefined]
+        .filter(Boolean)
+        .join(", ");
+    const message = redactSecret(`${text} (${meta})`, secret);
     return new WhatsAppApiError({
         kind,
         status,
@@ -134,6 +145,8 @@ export function errorFromResponse(status, body, secret) {
         message,
         retryable: isRetryable(kind),
         indeterminate: isIndeterminate(kind),
+        details: details ? redactSecret(details, secret) : undefined,
+        fbtraceId,
     });
 }
 /** Wrap a low-level fetch/network failure as an indeterminate network error. */

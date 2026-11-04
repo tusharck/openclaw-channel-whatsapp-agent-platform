@@ -10,6 +10,6 @@ describe("document size limit", () => {
 
   it("accepts a PDF at exactly 16 MiB and rejects one byte over", () => {
     expect(validateMedia("document", 16 * MiB, "application/pdf")).toBeNull();
-    expect(validateMedia("document", 16 * MiB + 1, "application/pdf")).toMatch(/exceeds the 16MB limit/);
+    expect(validateMedia("document", 16 * MiB + 1, "application/pdf")).toMatch(/over WhatsApp's 16\.0MB limit/);
   });
 });
