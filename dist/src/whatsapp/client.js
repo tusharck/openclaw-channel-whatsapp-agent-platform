@@ -7,7 +7,8 @@
  * Authorization header and is never logged or attached to thrown errors.
  */
 import { WhatsAppApiError, errorFromResponse, networkError } from "./errors.js";
-import { validateMedia } from "./media.js";
+import { extensionForMime, validateMedia } from "./media.js";
+import { redactSecret } from "./redact.js";
 import { buildMediaMessage, buildReactionMessage, buildTextMessage } from "./payloads.js";
 import { RollingWindowLimiter, backoffDelay, systemClock } from "./rate-limit.js";
 export const DEFAULT_BASE_URL = "https://api.whatsapp.com/agent/v1";
@@ -85,7 +86,11 @@ export class WhatsAppAgentClient {
     sendReaction(to, messageId, emoji, signal) {
         return this.sendMessage(buildReactionMessage(to, messageId, emoji), signal);
     }
-    /** Upload media (multipart) and return its media id. Validates size/mime first. */
+    /**
+     * Upload media (multipart, manual §4 `POST /agent/v1/media`) and return its
+     * media id. Callers should run `prepareAttachment` first; the size/MIME check
+     * here is a backstop so nothing the platform would 131053 is ever sent.
+     */
     async uploadMedia(params, signal) {
         const validationError = validateMedia(params.type, params.data.byteLength, params.mimeType);
         if (validationError) {
@@ -105,7 +110,7 @@ export class WhatsAppAgentClient {
         form.append("messaging_product", "whatsapp");
         form.append("type", mimeType);
         const blob = new Blob([toArrayBuffer(params.data)], { type: mimeType });
-        form.append("file", blob, params.filename ?? `upload.${extForMime(mimeType)}`);
+        form.append("file", blob, params.filename ?? `upload.${extensionForMime(mimeType) ?? "bin"}`);
         const res = await this.request({
             method: "POST",
             path: "/media",
@@ -231,6 +236,10 @@ export class WhatsAppAgentClient {
             const parsed = await safeJson(res);
             const apiErr = errorFromResponse(res.status, parsed, this.apiKey);
             this.logger?.warn?.(`WhatsApp ${opts.method} ${opts.path} failed: ${apiErr.message}`);
+            if (opts.category === "media") {
+                // Media failures are diagnosed from the full body (error_data.details, fbtrace_id).
+                this.logger?.warn?.(`WhatsApp ${opts.method} ${opts.path} error body: ${redactSecret(JSON.stringify(parsed), this.apiKey)}`);
+            }
             // 429/503 are "definitely not delivered" → safe to retry with backoff.
             // 5xx/network are indeterminate → do not auto-retry non-idempotent sends.
             const canRetry = opts.allowRetry && apiErr.retryable && !apiErr.indeterminate && attempt < this.maxRetries;
@@ -275,22 +284,5 @@ function toArrayBuffer(data) {
     const copy = new Uint8Array(data.byteLength);
     copy.set(data);
     return copy.buffer;
-}
-function extForMime(mime) {
-    const map = {
-        "image/jpeg": "jpg",
-        "image/png": "png",
-        "image/webp": "webp",
-        "audio/ogg": "ogg",
-        "audio/mpeg": "mp3",
-        "audio/mp4": "m4a",
-        "audio/aac": "aac",
-        "audio/amr": "amr",
-        "video/mp4": "mp4",
-        "video/3gpp": "3gp",
-        "application/pdf": "pdf",
-        "text/plain": "txt",
-    };
-    return map[mime.toLowerCase()] ?? "bin";
 }
 //# sourceMappingURL=client.js.map

@@ -6,8 +6,8 @@
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { assertSupportedAttachment, prepareAttachment } from "./whatsapp/attachments.js";
 import { chunkText } from "./whatsapp/chunk.js";
-import { mediaTypeForMime } from "./whatsapp/media.js";
 /**
  * Send text, chunked, in order. Returns every message id produced.
  * Empty/whitespace-only input produces zero chunks and therefore zero ids —
@@ -28,23 +28,34 @@ export async function sendChunkedText(client, to, text, opts = {}) {
     }
     return { messageIds };
 }
-/** Upload a local file then send it as media. */
+/**
+ * Upload a local file then send it as media. The file is validated (and
+ * converted, for non-JPEG/PNG images) before anything is uploaded; an
+ * unsupported or oversized file fails fast with a clear local error.
+ */
 export async function sendLocalMedia(client, to, filePath, opts = {}) {
-    const data = new Uint8Array(await fs.readFile(filePath));
-    const mimeType = opts.mimeType ?? guessMime(filePath);
-    const mediaType = opts.mediaType ?? mediaTypeForMime(mimeType);
     const filename = opts.filename ?? path.basename(filePath);
-    const mediaId = await client.uploadMedia({ type: mediaType, data, mimeType, filename }, opts.signal);
-    const res = await client.sendMedia(to, mediaType, { id: mediaId, caption: opts.caption, filename: mediaType === "document" ? filename : undefined }, opts.signal);
-    const messageIds = res.messages.map((m) => m.id);
-    deferRelease(client, mediaId, messageIds, opts.logger);
-    return { messageIds };
+    // Reject by extension before reading what may be a large file.
+    assertSupportedAttachment(filename, opts.mimeType);
+    const data = new Uint8Array(await fs.readFile(filePath));
+    const prepared = await prepareAttachment({ data, filename, mimeType: opts.mimeType, mediaType: opts.mediaType });
+    return uploadAndSend(client, to, prepared, opts);
 }
-/** Send already-in-memory bytes as media (upload then send). */
+/** Send already-in-memory bytes as media (validate/convert, upload, then send). */
 export async function sendBytesMedia(client, to, data, mimeType, opts = {}) {
-    const mediaType = opts.mediaType ?? mediaTypeForMime(mimeType);
-    const mediaId = await client.uploadMedia({ type: mediaType, data, mimeType, filename: opts.filename }, opts.signal);
-    const res = await client.sendMedia(to, mediaType, { id: mediaId, caption: opts.caption, filename: mediaType === "document" ? opts.filename : undefined }, opts.signal);
+    const prepared = await prepareAttachment({ data, filename: opts.filename, mimeType, mediaType: opts.mediaType });
+    return uploadAndSend(client, to, prepared, opts);
+}
+async function uploadAndSend(client, to, a, opts) {
+    if (a.convertedFrom) {
+        opts.logger?.info?.(`Converted ${a.convertedFrom} attachment to ${a.mimeType} (${a.filename}) for WhatsApp.`);
+    }
+    const mediaId = await client.uploadMedia({ type: a.mediaType, data: a.data, mimeType: a.mimeType, filename: a.filename }, opts.signal);
+    const res = await client.sendMedia(to, a.mediaType, {
+        id: mediaId,
+        caption: a.mediaType === "audio" || a.mediaType === "sticker" ? undefined : opts.caption,
+        filename: a.mediaType === "document" ? a.filename : undefined,
+    }, opts.signal);
     const messageIds = res.messages.map((m) => m.id);
     deferRelease(client, mediaId, messageIds, opts.logger);
     return { messageIds };
@@ -95,25 +106,5 @@ async function releaseUploadedMedia(client, mediaId, logger) {
 }
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
-}
-function guessMime(filePath) {
-    const ext = path.extname(filePath).toLowerCase().replace(/^\./, "");
-    const map = {
-        jpg: "image/jpeg",
-        jpeg: "image/jpeg",
-        png: "image/png",
-        webp: "image/webp",
-        ogg: "audio/ogg",
-        mp3: "audio/mpeg",
-        m4a: "audio/mp4",
-        aac: "audio/aac",
-        amr: "audio/amr",
-        mp4: "video/mp4",
-        "3gp": "video/3gpp",
-        pdf: "application/pdf",
-        txt: "text/plain",
-        zip: "application/zip",
-    };
-    return map[ext] ?? "application/octet-stream";
 }
 //# sourceMappingURL=outbound.js.map

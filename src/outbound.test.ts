@@ -229,3 +229,62 @@ describe("outbound PDF document (131053 regression)", () => {
     expect((upload?.form?.get("file") as File).type).toBe("application/pdf");
   });
 });
+
+describe("outbound attachment validation (fail fast, no upload)", () => {
+  function spyClient() {
+    const calls: string[] = [];
+    const client = {
+      async uploadMedia(): Promise<string> {
+        calls.push("upload");
+        return "media-1";
+      },
+      async sendMedia(): Promise<WhatsAppSendResponse> {
+        calls.push("send");
+        return { messaging_product: "whatsapp", messages: [{ id: "wamid.1" }] };
+      },
+      async deleteMedia(): Promise<void> {},
+    } as unknown as WhatsAppAgentClient;
+    return { client, calls };
+  }
+
+  it("rejects a ZIP locally and never uploads (or even reads) it", async () => {
+    const { client, calls } = spyClient();
+    // The path does not exist: rejection must happen on the name alone.
+    await expect(sendLocalMedia(client, "user:1", "/nonexistent/bundle.zip")).rejects.toThrow(
+      /^Unsupported attachment type: "bundle.zip" \(\.zip\)/,
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses in-memory bytes declared as application/octet-stream", async () => {
+    const { client, calls } = spyClient();
+    await expect(sendBytesMedia(client, "user:1", new Uint8Array([1]), "application/octet-stream")).rejects.toThrow(
+      /Unsupported attachment type/,
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it("converts a WebP 'image preview' to PNG and uploads it as image/png", async () => {
+    const { MagickColor, MagickFormat, MagickImage, initializeImageMagick } = await import("@imagemagick/magick-wasm");
+    const { createRequire } = await import("node:module");
+    const require = createRequire(import.meta.url);
+    await initializeImageMagick(await fs.readFile(require.resolve("@imagemagick/magick-wasm/magick.wasm")));
+    const img = MagickImage.create(new MagickColor("green"), 16, 16);
+    const webp = img.write(MagickFormat.WebP, (d) => new Uint8Array(d));
+    img.dispose();
+
+    const uploads: Array<{ type: string; mimeType: string; filename?: string }> = [];
+    const client = {
+      async uploadMedia(p: { type: string; mimeType: string; filename?: string }): Promise<string> {
+        uploads.push({ type: p.type, mimeType: p.mimeType, filename: p.filename });
+        return "media-1";
+      },
+      async sendMedia(): Promise<WhatsAppSendResponse> {
+        return { messaging_product: "whatsapp", messages: [{ id: "wamid.2" }] };
+      },
+      async deleteMedia(): Promise<void> {},
+    } as unknown as WhatsAppAgentClient;
+    await sendBytesMedia(client, "user:1", webp, "image/webp", { filename: "preview.webp" });
+    expect(uploads).toEqual([{ type: "image", mimeType: "image/png", filename: "preview.png" }]);
+  });
+});
